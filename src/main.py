@@ -3,8 +3,8 @@ from model import load_model, YOLOModel
 from webcam3 import process_webcam_stream
 
 def main():
-    yolo_model_path = 'best.pt'
-    resnet_model_path = 'eye_tracking_model.pth'
+    yolo_model_path = './model/best.pt'
+    resnet_model_path = './model/eye_tracking_model.pth'
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
