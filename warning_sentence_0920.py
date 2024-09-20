@@ -65,7 +65,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 yolo_model = YOLOModel(r"C:\Users\world\OneDrive\바탕 화면\서버연습용_0910\yolo_0919.pt")
 eye_tracking_model = load_model(r"C:\Users\world\OneDrive\바탕 화면\서버연습용_0910\eye_tracking_model.pth", device)
 
-# 카운트 변수 초기화
+# 카운트 변수 및 플래그 초기화
 all_frame_count = 0
 Look_Forward_count = 0
 awake_count = 0
@@ -76,12 +76,12 @@ sentence_count = 0
 previous_sentence_count = 0  # 이전 sentence_count를 저장하기 위한 변수
 frame_counter = 0
 warning_frame_threshold = 3000
+next_sent = False  # 'next' 신호가 전송되었는지 확인하는 플래그 변수
 
-# 클릭 이벤트 처리 경로
 # 클릭 이벤트 처리 경로
 @app.route('/upload-frame/click_event', methods=['POST'])
 def reset_counts():
-    global all_frame_count, Look_Forward_count, awake_count, drowsy_count, yelling_count, sentence_count
+    global all_frame_count, Look_Forward_count, awake_count, drowsy_count, yelling_count, sentence_count, next_sent
     app.logger.info("Click event received. Resetting all counts.")
     
     # 모든 카운트를 0으로 초기화
@@ -91,12 +91,24 @@ def reset_counts():
     drowsy_count = 0
     yelling_count = 0
     sentence_count = 0  # sentence_count 초기화
+    next_sent = False  # 'next' 신호 플래그 리셋
 
     return jsonify({'message': 'Counts reset successfully'}), 200
 
+@app.route('/upload-frame/click_next', methods=['POST'])
+def reset_sentence_count():
+    global sentence_count, next_sent
+    app.logger.info("Click event received for 'next'. Resetting sentence_count and next_sent.")
+
+    # sentence_count와 next_sent를 초기화
+    sentence_count = 0
+    next_sent = False
+
+    return jsonify({'message': 'sentence_count and next_sent reset successfully'}), 200
+
 @app.route('/upload-frame', methods=['POST'])
 def upload_frame():
-    global frame_counter, sequence, sentence_count, previous_sentence_count
+    global frame_counter, sequence, sentence_count, previous_sentence_count, next_sent
     global all_frame_count, Look_Forward_count, awake_count, drowsy_count, yelling_count
 
     app.logger.debug("Received request")
@@ -198,6 +210,16 @@ def upload_frame():
         if show_toast:
             app.logger.info(f"Sentence count changed from {previous_sentence_count} to {sentence_count}")
             previous_sentence_count = sentence_count
+
+        # 'next' 신호를 단 한 번만 반환할 조건 추가 (sentence_count가 5에 도달하고 아직 'next' 신호가 전송되지 않았을 경우)
+        if sentence_count == 2 and not next_sent:
+            app.logger.info("Sentence count reached 5 for the first time. Returning 'next' signal.")
+            next_sent = True  # 'next' 신호가 한 번 전송되었음을 표시
+            return jsonify({
+                'message': 'next',
+                'sentence_count': sentence_count,
+                'show_toast': True
+            }), 200
 
         # 응답 생성
         response = {
