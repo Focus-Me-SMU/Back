@@ -1,4 +1,5 @@
 import torch
+import pymysql
 import torchvision.transforms as transforms
 from flask import Flask, request, jsonify, Response
 import cv2
@@ -8,6 +9,7 @@ from ultralytics import YOLO
 from PIL import Image as Image_pil
 from torch import nn
 import torchvision.models as models
+
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.DEBUG)
@@ -62,8 +64,8 @@ def preprocess_image(image, device):
 
 # YOLO 및 ResNet 모델 로드
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-yolo_model = YOLOModel(r"C:\Users\world\OneDrive\바탕 화면\서버연습용_0910\yolo_0919.pt")
-eye_tracking_model = load_model(r"C:\Users\world\OneDrive\바탕 화면\서버연습용_0910\eye_tracking_model.pth", device)
+yolo_model = YOLOModel(r"C:/Users/enter/OneDrive/문서/카카오톡 받은 파일/yolo_0919.pt")
+eye_tracking_model = load_model(r"C:/Users/enter/Downloads/eye_tracking_model.pth", device)
 
 # 카운트 변수 및 플래그 초기화
 all_frame_count = 0
@@ -121,6 +123,20 @@ def return_counts():
         'yelling_count': yelling_count
     }
 
+    print(counts)
+
+    # conn = pymysql.connect(host='127.0.0.1', user='root', password='root', db='FocusMe', charset='utf8')
+    # cur = conn.cursor()
+
+    # sql = "INSERT INTO FocusMe (all_frame, awake) VALUES (%s, %s)"
+    # data = (all_frame_count, awake_count)
+    # cur.execute(sql, data)
+    # # # 5. 입력한 데이터 저장하기
+    # conn.commit()
+
+    # # # 6. MySQL 연결 종료하기
+    # conn.close()
+
     return jsonify(counts), 200
 
 
@@ -154,6 +170,8 @@ def upload_frame():
         predicted_class = None   # 가장 높은 확률을 가진 예측된 클래스
         awake_detected = False
 
+        yelling_threshold = 0.9
+
         # 모든 예측 결과 중 가장 높은 확률의 클래스만 선택
         for result in results:
             boxes = result.boxes
@@ -167,22 +185,39 @@ def upload_frame():
                     if conf > highest_confidence:
                         highest_confidence = conf
                         predicted_class = yolo_model.class_names[cls]
-                        if predicted_class == 'awake':
+                        # 'yelling' 클래스의 경우 특정 threshold를 넘은 경우에만 인정
+                        if predicted_class == 'yelling' and conf < yelling_threshold:
+                            # 'yelling'의 conf가 threshold를 넘지 못하면 패스
+                            predicted_class = None
+                        elif predicted_class == 'awake':
                             awake_detected = True
                             frame_counter = 0  # 'awake' 탐지 시 프레임 카운터 초기화
 
         # 프레임이 처리되었으므로 전체 프레임 카운트를 증가
         all_frame_count += 1
+        
+        # drowsy 상태를 위한 연속 프레임 카운터 및 임계값 설정
+        drowsy_frame_counter = 0
+        drowsy_threshold = 5  # 연속적으로 5 프레임 이상 'drowsy'로 감지될 때만 카운트 (원하는 프레임 수로 설정)
 
         # 가장 높은 확률의 클래스에 따라 해당 상태의 카운트를 증가
         if predicted_class == 'Look_Forward':
             Look_Forward_count += 1
         elif predicted_class == 'awake':
             awake_count += 1
+            drowsy_frame_counter = 0  # 'awake' 상태일 때는 drowsy 카운터 초기화
         elif predicted_class == 'drowsy':
-            drowsy_count += 1
+            drowsy_frame_counter += 1
+            # 'drowsy' 상태가 연속적으로 n 프레임 이상 감지될 경우에만 카운트 증가
+            if drowsy_frame_counter >= drowsy_threshold:
+                drowsy_count += 1
+            else:
+                awake_count += 1
         elif predicted_class == 'yelling':
             yelling_count += 1
+            drowsy_frame_counter = 0  # 'yelling' 상태일 때는 drowsy 카운터 초기화
+        else:
+            drowsy_frame_counter = 0  # 다른 상태일 경우 drowsy 카운터 초기화
 
         # 가장 높은 확률의 클래스만 로그로 출력
         if predicted_class:
@@ -230,7 +265,7 @@ def upload_frame():
             previous_sentence_count = sentence_count
 
         # 'next' 신호를 단 한 번만 반환할 조건 추가 (sentence_count가 5에 도달하고 아직 'next' 신호가 전송되지 않았을 경우)
-        if sentence_count == 2 and not next_sent:
+        if sentence_count == 5 and not next_sent:
             app.logger.info("Sentence count reached 5 for the first time. Returning 'next' signal.")
             return jsonify({
                 'message': 'next',

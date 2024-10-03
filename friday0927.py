@@ -79,7 +79,7 @@ previous_sentence_count = 0  # 이전 sentence_count를 저장하기 위한 변�
 frame_counter = 0
 warning_frame_threshold = 3000
 next_sent = False  # 'next' 신호가 전송되었는지 확인하는 플래그 변수
-score=0
+score = 0
 
 # 클릭 이벤트 처리 경로
 @app.route('/upload-frame/click_event', methods=['POST'])
@@ -95,7 +95,6 @@ def reset_counts():
     yelling_count = 0
     sentence_count = 0  # sentence_count 초기화
     next_sent = False  # 'next' 신호 플래그 리셋
-    score = 0 
 
     return jsonify({'message': 'Counts reset successfully'}), 200
 
@@ -115,7 +114,12 @@ def reset_sentence_count():
 @app.route('/upload-frame/click_end', methods=['POST'])
 def return_counts():
     global all_frame_count, Look_Forward_count, awake_count, drowsy_count, yelling_count, score
-    final_score = round(awake_count/all_frame_count*100*0.5 + score*25*0.5,2)
+
+    # 문제 맞춘 갯수 받아오는 코드    
+    request_data = request.get_json()
+    score = request_data['score']
+
+    final_score = round(awake_count/all_frame_count*100*0.8 + score*25*0.2,2)
     app.logger.info("Click event received for 'end'. Returning all counts.")
 
     conn = pymysql.connect(host='127.0.0.1', user='root', password='root', db='FocusMe', charset='utf8')
@@ -128,31 +132,48 @@ def return_counts():
     # # 5. 입력한 데이터 저장하기
     conn.commit()
 
-    # score의 평균 구하기
-    avg_score_query = """
-    SELECT AVG(score) AS avg_score
-    FROM FocusMe;
+    # score의 중앙값 구하기 (상위 50%)
+    med_score_query = """
+    SELECT AVG(score) AS median_score
+    FROM (
+        SELECT score,
+        ROW_NUMBER() OVER (ORDER BY score) AS row_num,
+        COUNT(*) OVER() AS total_count
+        FROM FocusMe
+    ) AS TMP
+    WHERE row_num IN (FLOOR((total_count + 1) / 2), FLOOR((total_count + 2) / 2));
+
     """
-    cur.execute(avg_score_query)
-    avg_score_result = cur.fetchone()
-    avg_score = avg_score_result[0]
-    print(f"Average Score: {avg_score}")
+    cur.execute(med_score_query)
+    med_score_result = cur.fetchone()
+    med_score = med_score_result[0]
 
     # score의 상위 10% 구하기
     top_10_percent_query = """
-    SELECT AVG(score) AS avg_score
-    FROM FocusMe;
+    SELECT MIN(score) AS lowest_top_10_percent_score
+    FROM (
+        SELECT score,
+        ROW_NUMBER() OVER (ORDER BY score DESC) AS row_num,
+        COUNT(*) OVER() AS total_count
+        FROM FocusMe
+    ) AS TMP
+    WHERE row_num <= FLOOR(total_count * 0.1);
     """
 
     cur.execute(top_10_percent_query)
-    top_score = cur.fetchall()
+    top_score = cur.fetchone()
+    top_score = top_score[0]
+
+    # 모든 사람의 score를 배열로 반환하는 쿼리
+    all_score_get_query = """
+    select score from focusme;
+    """
+    cur.execute(all_score_get_query)
+    all_score = cur.fetchall()
+    all_score = [row[0] for row in all_score]
 
     # # 7. MySQL 연결 종료하기
     conn.close()
-
-    print(avg_score)
-    top_score = avg_score + 1
-    print(top_score)
 
     counts = {
         'all_frame_count': all_frame_count,
@@ -161,8 +182,9 @@ def return_counts():
         'drowsy_count': drowsy_count,
         'yelling_count': yelling_count,
         'final_score': final_score,
-        'avg_score' : round(float(avg_score),2),
-        'top_score' : round(float(top_score),2)
+        'med_score' : round(float(med_score),2),
+        'top_score' : round(float(top_score),2),
+        'final_score_all' : all_score
     }
 
     print(counts)

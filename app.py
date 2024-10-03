@@ -10,8 +10,8 @@ logging.basicConfig(level=logging.DEBUG)
 
 # YOLO 및 ResNet 모델 로드
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-yolo_model = YOLOModel(r'C:\Users\world\OneDrive\바탕 화면\졸프_0910\Back\src\yolo_user_concentration_detect.pt')
-eye_tracking_model = load_model(r"C:\Users\world\OneDrive\바탕 화면\서버연습용_0910\eye_tracking_model.pth", device)
+yolo_model = YOLOModel(r'C:\Users\enter\Back-1\src\yolo_user_concentration_detect.pt')
+eye_tracking_model = load_model(r"C:\Users\enter\Back-1\가중치파일\eye_tracking_model.pth", device)
 
 frame_counter = 0
 warning_frame_threshold = 30
