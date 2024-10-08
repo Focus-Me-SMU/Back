@@ -62,8 +62,8 @@ def preprocess_image(image, device):
 
 # YOLO 및 ResNet 모델 로드
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-yolo_model = YOLOModel(r"C:\Users\world\OneDrive\바탕 화면\서버연습용_0910\yolo_0919.pt")
-eye_tracking_model = load_model(r"C:\Users\world\OneDrive\바탕 화면\서버연습용_0910\eye_tracking_model.pth", device)
+yolo_model = YOLOModel(r"insert_pt_path")                                  # YOLO가중치
+eye_tracking_model = load_model(r"insert_pth_path", device)                # Resnet 가중치
 
 # 카운트 변수 및 플래그 초기화
 all_frame_count = 0
