@@ -202,7 +202,7 @@ def upload_frame():
             return jsonify({
                 'message': 'Warning: User not detected as awake for 5 frames',
                 'sentence_count': sentence_count,
-                'show_toast': True
+                'warning_toast': True
             }), 200
 
         # ResNet 기반 눈 추적 모델로 사용자의 시선 방향 분석
@@ -222,8 +222,15 @@ def upload_frame():
         elif eye_region == 3 and sequence == [0, 1, 2]:
             sequence.append(3)
             sentence_count += 1
-            app.logger.info(f"Correct sequence detected. Sentence count increased: {sentence_count}")
-            sequence = []  # 시퀀스를 초기화하여 다시 0부터 시작하도록 설정
+            app.logger.info(f"정확한 시퀀스가 감지되었습니다. sentence_count가 증가: {sentence_count}")
+            sequence = []  # 시퀀스를 초기화하여 다시 0부터 시작
+
+            # sentence_count가 증가할 때마다 응답 반환
+            return jsonify({
+                'message': f'sentence_count 증가: {sentence_count}',
+                'sentence_count': sentence_count,
+                'show_toast': True
+            }), 200
 
         # sentence_count가 변경되었는지 확인
         show_toast = sentence_count != previous_sentence_count
@@ -231,14 +238,6 @@ def upload_frame():
             app.logger.info(f"Sentence count changed from {previous_sentence_count} to {sentence_count}")
             previous_sentence_count = sentence_count
 
-        # 'next' 신호를 단 한 번만 반환할 조건 추가 (sentence_count가 5에 도달하고 아직 'next' 신호가 전송되지 않았을 경우)
-        if sentence_count == 5 and not next_sent:
-            app.logger.info("Sentence count reached 5 for the first time. Returning 'next' signal.")
-            return jsonify({
-                'message': 'next',
-                'sentence_count': sentence_count,
-                'show_toast': True
-            }), 200
 
         # 응답 생성
         response = {
