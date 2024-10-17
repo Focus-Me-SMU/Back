@@ -1,4 +1,5 @@
 import torch
+import pymysql
 import torchvision.transforms as transforms
 from flask import Flask, request, jsonify, Response
 import cv2
@@ -62,8 +63,8 @@ def preprocess_image(image, device):
 
 # YOLO 및 ResNet 모델 로드
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-yolo_model = YOLOModel(r"insert_pt_path")                                  # YOLO가중치
-eye_tracking_model = load_model(r"insert_pth_path", device)                # Resnet 가중치
+yolo_model = YOLOModel(r"C:/Users/enter/OneDrive/문서/카카오톡 받은 파일/yolo_0919.pt")
+eye_tracking_model = load_model(r"C:/Users/enter/Downloads/eye_tracking_model.pth", device)
 
 # 카운트 변수 및 플래그 초기화
 all_frame_count = 0
@@ -110,16 +111,81 @@ def reset_sentence_count():
 #종료버튼 클릭하면 처리
 @app.route('/upload-frame/click_end', methods=['POST'])
 def return_counts():
-    global all_frame_count, Look_Forward_count, awake_count, drowsy_count, yelling_count
+    global all_frame_count, Look_Forward_count, awake_count, drowsy_count, yelling_count, score
+
+    # 문제 맞춘 갯수 받아오는 코드    
+    request_data = request.get_json()
+    score = request_data['score']
+
+    final_score = round(awake_count/all_frame_count*100*0.8 + score*25*0.2,2)
     app.logger.info("Click event received for 'end'. Returning all counts.")
+
+    conn = pymysql.connect(host='127.0.0.1', user='root', password='root', db='FocusMe', charset='utf8')
+    cur = conn.cursor()
+
+    sql = "INSERT INTO FocusMe (all_frame, awake, Forward, drowsy, yelling, score) VALUES (%s, %s, %s, %s, %s, %s)"
+    data = (all_frame_count, awake_count, Look_Forward_count, drowsy_count, yelling_count, final_score)
+    cur.execute(sql, data)
+
+    # # 5. 입력한 데이터 저장하기
+    conn.commit()
+
+    # score의 중앙값 구하기 (상위 50%)
+    med_score_query = """
+    SELECT AVG(score) AS median_score
+    FROM (
+        SELECT score,
+        ROW_NUMBER() OVER (ORDER BY score) AS row_num,
+        COUNT(*) OVER() AS total_count
+        FROM FocusMe
+    ) AS TMP
+    WHERE row_num IN (FLOOR((total_count + 1) / 2), FLOOR((total_count + 2) / 2));
+
+    """
+    cur.execute(med_score_query)
+    med_score_result = cur.fetchone()
+    med_score = med_score_result[0]
+
+    # score의 상위 10% 구하기
+    top_10_percent_query = """
+    SELECT MIN(score) AS lowest_top_10_percent_score
+    FROM (
+        SELECT score,
+        ROW_NUMBER() OVER (ORDER BY score DESC) AS row_num,
+        COUNT(*) OVER() AS total_count
+        FROM FocusMe
+    ) AS TMP
+    WHERE row_num <= FLOOR(total_count * 0.1);
+    """
+
+    cur.execute(top_10_percent_query)
+    top_score = cur.fetchone()
+    top_score = top_score[0]
+
+    # 모든 사람의 score를 배열로 반환하는 쿼리
+    all_score_get_query = """
+    select score from focusme;
+    """
+    cur.execute(all_score_get_query)
+    all_score = cur.fetchall()
+    all_score = [row[0] for row in all_score]
+
+    # # 7. MySQL 연결 종료하기
+    conn.close()
 
     counts = {
         'all_frame_count': all_frame_count,
         'Look_Forward_count': Look_Forward_count,
         'awake_count': awake_count,
         'drowsy_count': drowsy_count,
-        'yelling_count': yelling_count
+        'yelling_count': yelling_count,
+        'final_score': final_score,
+        'med_score' : round(float(med_score),2),
+        'top_score' : round(float(top_score),2),
+        'final_score_all' : all_score
     }
+
+    print(counts)
 
     return jsonify(counts), 200
 
